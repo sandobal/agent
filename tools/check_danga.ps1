@@ -12,6 +12,8 @@ $ErrorActionPreference = 'Stop'
 
 # 발주서 식품명(정규식) -> 단가자료 지원품목명. 위에서부터 먼저 맞는 규칙을 사용한다.
 $rules = @(
+  @('^연근','깐연근채'), @('^한우\(채끝\)','한우 채끝'), @('^찹쌀\(흑미\)','찰흑미'), @('^우엉','깐우엉채'), @('^혼합잡곡','혼합5곡(2025년산)'), @('^보리\(쌀보리\)','쌀보리'), @('^오리고기','오리 정육'),
+  @('^닭고기\(윙\)|^닭고기\(닭날개\)','계육 윙'), @('^돼지고기\(등갈비\)','돈육 등갈비'), @('^배\(kg\)','배(신고/25내)'),
   @('^멥쌀\(백미\)','멥쌀백미(2025년산)'), @('^찹쌀\(백미\)','찹쌀백미(2025년산)'), @('^찹쌀\(현미\)','찰현미'),
   @('^멥쌀\(발아현미\)','발아현미'), @('^멥쌀\(현미\)','현미'), @('^멥쌀\(흑미\)','찰흑미'),
   @('^귀리','귀리'), @('^기장','찰기장'), @('^녹두','깐녹두'), @('^보리\(찰보리\)','찰보리'), @('^보리\(할맥\)','압맥'),
@@ -49,7 +51,7 @@ function Get-DangaSpec([string]$spec, [string]$name) {
   return ''
 }
 function ToNum($t) { $s = ("$t" -replace '[^\d.]', ''); if ($s) { [double]$s } else { $null } }
-function Split-Sup($s) { @(("$s" -split '[/,]') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Sort-Object -Unique) }
+function Split-Sup($s) { @(((("$s" -replace '한살림축산식품|한축식품|한축','한살림축산')) -split '[/,]') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Sort-Object -Unique) }
 
 $xl = New-Object -ComObject Excel.Application
 $xl.Visible = $false; $xl.DisplayAlerts = $false
@@ -71,11 +73,14 @@ try {
 
   foreach ($f in Get-ChildItem -LiteralPath (Join-Path $Folder '현품서') -Filter '현품서_*(친환경)_*.xlsx' -File) {
     $school = ($f.BaseName -replace '^현품서_', '') -replace '\(친환경\).*$', ''
-    $wb = $xl.Workbooks.Open($f.FullName, 0, $true); $ws = $wb.Worksheets.Item(1)
-    for ($r = 2; $r -le $ws.UsedRange.Rows.Count; $r++) {
-      $n = $ws.Cells.Item($r, 2).Text.Trim(); if (-not $n) { continue }
-      $rows.Add([pscustomobject]@{ school = $school; name = $n; spec = $ws.Cells.Item($r, 3).Text.Trim(); qty = $ws.Cells.Item($r, 5).Value2
-                                  price = [double]$ws.Cells.Item($r, 6).Value2; vendor = $ws.Cells.Item($r, 7).Text.Trim() })
+    $wb = $xl.Workbooks.Open($f.FullName, 0, $true)
+    foreach ($ws in $wb.Worksheets) {   # 중식/석식처럼 시트가 나뉜 현품서도 모두 확인
+      for ($r = 2; $r -le $ws.UsedRange.Rows.Count; $r++) {
+        $n = $ws.Cells.Item($r, 2).Text.Trim(); if (-not $n) { continue }
+        if ($n -match '^닭뼈') { continue }   # 사용자 지시(2026-10-16): 닭뼈는 단가 확인에서 제외
+        $rows.Add([pscustomobject]@{ school = $school; name = $n; spec = $ws.Cells.Item($r, 3).Text.Trim(); qty = $ws.Cells.Item($r, 5).Value2
+                                    price = [double]$ws.Cells.Item($r, 6).Value2; vendor = $ws.Cells.Item($r, 7).Text.Trim() })
+      }
     }
     $wb.Close($false)
   }
@@ -103,6 +108,8 @@ $out = foreach ($it in $rows) {
   $expected = $row.price
   # 쌀류: 발주서 단위가 kg 이고 단가자료가 10kg/4kg 단위면 kg당 단가로 환산
   if ($it.name -match '\(kg\)$' -and $row.spec -match '^(\d+)kg$' -and [int]$Matches[1] -gt 1) { $expected = $row.price / [int]$Matches[1] }
+  # 단가자료가 500g 단가이고 발주서 규격이 1.00kg 이면 1kg 단가(x2)로 환산 (예: 완두콩 냉동)
+  if ($it.spec -eq '1.00kg' -and $row.spec -eq '500g') { $expected = $row.price * 2 }
   $res.단가자료품목 = $row.name; $res.단가자료규격 = $row.spec; $res.단가자료단가 = $expected; $res.단가자료공급자 = $row.supplier
   $priceOk = ($null -ne $expected) -and ([math]::Abs($expected - $it.price) -lt 0.5)
   $res.단가 = if ($priceOk) { '일치' } else { '불일치' }
