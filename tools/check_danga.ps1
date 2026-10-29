@@ -71,8 +71,8 @@ try {
   }
   $wb.Close($false)
 
-  foreach ($f in Get-ChildItem -LiteralPath (Join-Path $Folder '현품서') -Filter '현품서_*(친환경)_*.xlsx' -File) {
-    $school = ($f.BaseName -replace '^현품서_', '') -replace '\(친환경\).*$', ''
+  foreach ($f in Get-ChildItem -LiteralPath (Join-Path $Folder '현품서') -Filter '현품서_*(친환경*)_*.xlsx' -File) {
+    $school = (($f.BaseName -replace '^현품서_', '') -replace '\(친환경_육류\).*$', '(육류)') -replace '\(친환경\).*$', ''
     $wb = $xl.Workbooks.Open($f.FullName, 0, $true)
     foreach ($ws in $wb.Worksheets) {   # 중식/석식처럼 시트가 나뉜 현품서도 모두 확인
       for ($r = 2; $r -le $ws.UsedRange.Rows.Count; $r++) {
