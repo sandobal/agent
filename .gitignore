@@ -1,11 +1,3 @@
-# 업무 데이터(내부 자료)는 올리지 않는다
-output/
-친환경급식/
-works/*
-!works/작업정리_*.md
-# 실행 로그/상태
-*.log
-watch_state.json
 # 엑셀 임시/잠금 파일
 ~$*
 *.tmp
